@@ -1,0 +1,166 @@
+.shell {
+  width: min(720px, 100%);
+  margin: 0 auto;
+  padding: 56px 20px;
+  box-sizing: border-box;
+}
+
+.hero {
+  margin-bottom: 28px;
+}
+
+.hero p {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  margin-bottom: 10px;
+}
+
+.hero span,
+.card p {
+  color: var(--text);
+}
+
+.status-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin-bottom: 18px;
+  overflow: hidden;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.status-panel div,
+.card {
+  background: var(--panel);
+}
+
+.status-panel div {
+  display: grid;
+  gap: 6px;
+  padding: 18px;
+}
+
+.status-panel span,
+.call-note span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.status-panel strong,
+.call-note strong {
+  color: var(--text-h);
+}
+
+.card {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.quiet {
+  gap: 22px;
+}
+
+label {
+  display: grid;
+  gap: 8px;
+  color: var(--text-h);
+  font-size: 14px;
+  font-weight: 750;
+}
+
+input,
+textarea,
+button {
+  font: inherit;
+}
+
+input,
+textarea {
+  width: 100%;
+  box-sizing: border-box;
+  color: var(--text-h);
+  background: var(--field-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+input {
+  min-height: 44px;
+  padding: 0 12px;
+}
+
+textarea {
+  min-height: 220px;
+  padding: 12px;
+  resize: vertical;
+}
+
+button {
+  min-height: 44px;
+  justify-self: start;
+  padding: 0 18px;
+  color: #ffffff;
+  font-weight: 750;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--accent-strong);
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.call-note {
+  display: grid;
+  gap: 4px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.final-goals {
+  display: grid;
+  gap: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.final-goals h2 {
+  font-size: 18px;
+  margin-bottom: 8px;
+}
+
+.final-goals ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+@media (max-width: 560px) {
+  .shell {
+    padding-top: 32px;
+  }
+
+  .status-panel {
+    grid-template-columns: 1fr;
+  }
+}
