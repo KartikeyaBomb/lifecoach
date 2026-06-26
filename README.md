@@ -71,3 +71,49 @@ free forever.
 npm install
 npm run dev
 ```
+
+Run the API server in a second terminal:
+
+```bash
+npm run dev:api
+```
+
+Check the backend status:
+
+```bash
+curl http://localhost:8787/api/status
+```
+
+Start one Twilio test call:
+
+```bash
+npm run test:call
+```
+
+The test call uses Twilio's `twiml` parameter directly, so it does not need
+ngrok yet.
+
+## Streamed Coach Call
+
+To test Twilio Media Streams locally, expose the API server with ngrok:
+
+```bash
+ngrok http 8787
+```
+
+Copy the HTTPS forwarding URL into `.env.local`:
+
+```bash
+PUBLIC_BASE_URL=https://your-ngrok-url.ngrok-free.app
+```
+
+Restart the API server after changing `.env.local`, then start one streamed call:
+
+```bash
+npm run test:coach-call
+```
+
+The streamed call currently proves that Twilio can reach the backend WebSocket.
+You should hear the connection message, and the API terminal should print dots
+as audio frames arrive. The next milestone is bridging those audio frames to
+OpenAI Realtime and sending the coach's audio back into the call.
