@@ -61,6 +61,25 @@ Recommended first real stack:
 - A database such as Postgres or SQLite for users, goals, memories, transcripts,
   and call status.
 
+## Daily Scheduling
+
+The local API process schedules one outbound AI coach call per day:
+
+```bash
+APP_TIMEZONE=America/Chicago
+DAILY_CALL_TIME=20:30
+MAX_CALL_MINUTES=5
+```
+
+The scheduler only runs while the API server is running:
+
+```bash
+npm run dev:api
+```
+
+For production, move this into a deployed worker or managed cron job so the call
+still happens when your laptop is closed.
+
 Twilio is pay-as-you-go for voice calls. OpenAI Realtime is billed by model/audio
 usage. Trial credits may help while testing, but production phone calls are not
 free forever.
@@ -117,3 +136,20 @@ The streamed call currently proves that Twilio can reach the backend WebSocket.
 You should hear the connection message, and the API terminal should print dots
 as audio frames arrive. The next milestone is bridging those audio frames to
 OpenAI Realtime and sending the coach's audio back into the call.
+
+## Memory
+
+Completed AI calls are saved locally to:
+
+```bash
+data/lifecoach-memory.json
+```
+
+The `data/` directory is ignored by git because it may contain private
+transcripts and coaching memory.
+
+Check memory status:
+
+```bash
+curl http://localhost:8787/api/memory
+```

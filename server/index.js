@@ -7,6 +7,9 @@ import {
   getConfig,
   validateConfig,
 } from './lifecoach.js'
+import { readMemoryStore } from './memory-store.js'
+import { bridgeTwilioToOpenAi } from './realtime-bridge.js'
+import { startDailyScheduler } from './scheduler.js'
 
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
@@ -25,8 +28,22 @@ function sendXml(response, statusCode, payload) {
   response.end(payload)
 }
 
+function readBody(request) {
+  return new Promise((resolve, reject) => {
+    let body = ''
+
+    request.on('data', (chunk) => {
+      body += chunk.toString()
+    })
+
+    request.on('end', () => resolve(body))
+    request.on('error', reject)
+  })
+}
+
 async function handleRequest(request, response) {
   const url = new URL(request.url, `http://${request.headers.host}`)
+  console.log(`${request.method} ${url.pathname}`)
 
   if (request.method === 'OPTIONS') {
     sendJson(response, 204, {})
@@ -45,8 +62,30 @@ async function handleRequest(request, response) {
       nextCall: {
         time: config.dailyCallTime,
         timezone: config.appTimezone,
+        maxMinutes: Math.round(config.maxCallMs / 60000),
       },
       env: validateConfig(config),
+    })
+    return
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/memory') {
+    const store = readMemoryStore()
+    const latestCall = store.calls.at(-1)
+
+    sendJson(response, 200, {
+      phase: store.phase,
+      memoryCount: store.memories.length,
+      callCount: store.calls.length,
+      latestCall: latestCall
+        ? {
+            id: latestCall.id,
+            startedAt: latestCall.startedAt,
+            endedAt: latestCall.endedAt,
+            turnCount: latestCall.turns.length,
+            summary: latestCall.summary.shortSummary,
+          }
+        : null,
     })
     return
   }
@@ -89,6 +128,13 @@ async function handleRequest(request, response) {
     return
   }
 
+  if (request.method === 'POST' && url.pathname === '/api/twilio/stream-status') {
+    const body = await readBody(request)
+    console.log(`Twilio stream status: ${body}`)
+    sendJson(response, 200, { ok: true })
+    return
+  }
+
   sendJson(response, 404, { ok: false, error: 'Not found' })
 }
 
@@ -106,44 +152,20 @@ const server = http.createServer((request, response) => {
 
 const streams = new WebSocketServer({ noServer: true })
 
-streams.on('connection', (socket) => {
-  let streamSid = 'unknown'
-
-  socket.on('message', (data) => {
-    try {
-      const message = JSON.parse(data.toString())
-
-      if (message.event === 'start') {
-        streamSid = message.start?.streamSid || streamSid
-        console.log(`Twilio media stream started: ${streamSid}`)
-      }
-
-      if (message.event === 'media') {
-        process.stdout.write('.')
-      }
-
-      if (message.event === 'stop') {
-        console.log(`\nTwilio media stream stopped: ${streamSid}`)
-      }
-    } catch {
-      console.log('Received non-JSON stream message')
-    }
-  })
-
-  socket.on('close', () => {
-    console.log(`\nTwilio media stream closed: ${streamSid}`)
-  })
-})
+streams.on('connection', (socket) => bridgeTwilioToOpenAi(socket))
 
 server.on('upgrade', (request, socket, head) => {
   const url = new URL(request.url, `http://${request.headers.host}`)
+  console.log(`UPGRADE ${url.pathname}`)
 
   if (url.pathname !== '/api/call-stream') {
+    console.log(`Rejected websocket path: ${url.pathname}`)
     socket.destroy()
     return
   }
 
   streams.handleUpgrade(request, socket, head, (websocket) => {
+    console.log('Accepted Twilio media websocket')
     streams.emit('connection', websocket, request)
   })
 })
@@ -153,5 +175,11 @@ server.listen(config.port, () => {
 
   if (!validation.ok) {
     console.log(`Missing env vars: ${validation.missing.join(', ')}`)
+  }
+
+  if (validation.ok && config.publicBaseUrl) {
+    startDailyScheduler()
+  } else {
+    console.log('Daily scheduler waiting for valid env and PUBLIC_BASE_URL')
   }
 })

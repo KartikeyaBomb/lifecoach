@@ -46,8 +46,11 @@ export function getConfig() {
     twilioPhoneNumber: process.env.TWILIO_PHONE_NUMBER,
     userPhoneNumber: process.env.USER_PHONE_NUMBER,
     publicBaseUrl: process.env.PUBLIC_BASE_URL,
+    realtimeModel: process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-2',
+    realtimeVoice: process.env.OPENAI_REALTIME_VOICE || 'marin',
     appTimezone: process.env.APP_TIMEZONE || 'America/Chicago',
     dailyCallTime: process.env.DAILY_CALL_TIME || '20:30',
+    maxCallMs: Number(process.env.MAX_CALL_MINUTES || 5) * 60 * 1000,
     port: Number(process.env.PORT || 8787),
   }
 }
@@ -65,8 +68,11 @@ export function validateConfig(config = getConfig()) {
       twilioPhoneNumber: Boolean(config.twilioPhoneNumber),
       userPhoneNumber: Boolean(config.userPhoneNumber),
       publicBaseUrl: Boolean(config.publicBaseUrl),
+      realtimeModel: config.realtimeModel,
+      realtimeVoice: config.realtimeVoice,
       appTimezone: config.appTimezone,
       dailyCallTime: config.dailyCallTime,
+      maxCallMinutes: Math.round(config.maxCallMs / 60000),
     },
   }
 }
@@ -128,14 +134,13 @@ export function makeStreamUrl() {
 export function createCoachTwiMl() {
   const response = new twilio.twiml.VoiceResponse()
 
-  response.say(
-    { voice: 'alice' },
-    'This is LifeCoach. I am connecting your live coaching session now.',
-  )
+  response.say({ voice: 'alice' }, 'LifeCoach is connecting.')
 
   const connect = response.connect()
   connect.stream({
     name: 'lifecoach-coach-call',
+    statusCallback: makePublicUrl('/api/twilio/stream-status'),
+    statusCallbackMethod: 'POST',
     url: makeStreamUrl(),
   })
 
@@ -158,7 +163,8 @@ export async function createStreamedCoachCall() {
   const call = await client.calls.create({
     to: config.userPhoneNumber,
     from: config.twilioPhoneNumber,
-    url: makePublicUrl('/api/twiml/coach'),
+    twiml: createCoachTwiMl(),
+    timeLimit: Math.round(config.maxCallMs / 1000),
   })
 
   return {
@@ -168,5 +174,15 @@ export async function createStreamedCoachCall() {
     from: config.twilioPhoneNumber,
     webhookUrl: makePublicUrl('/api/twiml/coach'),
     streamUrl: makeStreamUrl(),
+  }
+}
+
+export async function endCall(callSid) {
+  const client = makeTwilioClient()
+  const call = await client.calls(callSid).update({ status: 'completed' })
+
+  return {
+    sid: call.sid,
+    status: call.status,
   }
 }
