@@ -59,11 +59,11 @@ export function bridgeTwilioToOpenAi(twilioSocket) {
     }
   }
 
-  function saveCallMemory() {
+  async function saveCallMemory() {
     if (saved) return
     saved = true
 
-    const result = saveCompletedCall({
+    const result = await saveCompletedCall({
       callSid,
       streamSid,
       startedAt,
@@ -80,38 +80,45 @@ export function bridgeTwilioToOpenAi(twilioSocket) {
     console.log('OpenAI Realtime connected')
     openAiReady = true
 
-    sendJson(openAiSocket, {
-      type: 'session.update',
-      session: {
-        type: 'realtime',
-        model: config.realtimeModel,
-        output_modalities: ['audio'],
-        audio: {
-          input: {
-            format: {
-              type: 'audio/pcmu',
+    formatMemoryForPrompt()
+      .then((memoryPrompt) => {
+        sendJson(openAiSocket, {
+          type: 'session.update',
+          session: {
+            type: 'realtime',
+            model: config.realtimeModel,
+            output_modalities: ['audio'],
+            audio: {
+              input: {
+                format: {
+                  type: 'audio/pcmu',
+                },
+                transcription: {
+                  model: 'gpt-4o-mini-transcribe',
+                },
+                turn_detection: {
+                  type: 'semantic_vad',
+                  create_response: true,
+                  interrupt_response: true,
+                },
+              },
+              output: {
+                format: {
+                  type: 'audio/pcmu',
+                },
+                voice: config.realtimeVoice,
+              },
             },
-            transcription: {
-              model: 'gpt-4o-mini-transcribe',
-            },
-            turn_detection: {
-              type: 'semantic_vad',
-              create_response: true,
-              interrupt_response: true,
-            },
+            instructions: `${coachInstructions}\n\nSaved memory to use in this call:\n${memoryPrompt}`,
           },
-          output: {
-            format: {
-              type: 'audio/pcmu',
-            },
-            voice: config.realtimeVoice,
-          },
-        },
-        instructions: `${coachInstructions}\n\nSaved memory to use in this call:\n${formatMemoryForPrompt()}`,
-      },
-    })
+        })
 
-    flushQueuedAudio()
+        flushQueuedAudio()
+      })
+      .catch((error) => {
+        console.log(`Memory prompt error: ${error instanceof Error ? error.message : error}`)
+        twilioSocket.close()
+      })
   })
 
   openAiSocket.on('message', (data) => {
@@ -212,14 +219,18 @@ export function bridgeTwilioToOpenAi(twilioSocket) {
 
     if (message.event === 'stop') {
       console.log(`Twilio media stream stopped: ${streamSid}`)
-      saveCallMemory()
+      saveCallMemory().catch((error) => {
+        console.log(`Save memory error: ${error instanceof Error ? error.message : error}`)
+      })
       openAiSocket.close()
     }
   })
 
   twilioSocket.on('close', () => {
     console.log(`Twilio media stream closed: ${streamSid}`)
-    saveCallMemory()
+    saveCallMemory().catch((error) => {
+      console.log(`Save memory error: ${error instanceof Error ? error.message : error}`)
+    })
     openAiSocket.close()
   })
 }

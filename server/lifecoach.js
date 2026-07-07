@@ -9,6 +9,8 @@ const requiredEnv = [
   'TWILIO_AUTH_TOKEN',
   'TWILIO_PHONE_NUMBER',
   'USER_PHONE_NUMBER',
+  'LIFECOACH_ADMIN_TOKEN',
+  'STREAM_AUTH_TOKEN',
 ]
 
 export function loadEnv(file = '.env.local') {
@@ -46,6 +48,8 @@ export function getConfig() {
     twilioPhoneNumber: process.env.TWILIO_PHONE_NUMBER,
     userPhoneNumber: process.env.USER_PHONE_NUMBER,
     publicBaseUrl: process.env.PUBLIC_BASE_URL,
+    adminToken: process.env.LIFECOACH_ADMIN_TOKEN,
+    streamAuthToken: process.env.STREAM_AUTH_TOKEN,
     realtimeModel: process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-2',
     realtimeVoice: process.env.OPENAI_REALTIME_VOICE || 'marin',
     appTimezone: process.env.APP_TIMEZONE || 'America/Chicago',
@@ -68,6 +72,8 @@ export function validateConfig(config = getConfig()) {
       twilioPhoneNumber: Boolean(config.twilioPhoneNumber),
       userPhoneNumber: Boolean(config.userPhoneNumber),
       publicBaseUrl: Boolean(config.publicBaseUrl),
+      adminToken: Boolean(config.adminToken),
+      streamAuthToken: Boolean(config.streamAuthToken),
       realtimeModel: config.realtimeModel,
       realtimeVoice: config.realtimeVoice,
       appTimezone: config.appTimezone,
@@ -125,8 +131,15 @@ export function makePublicUrl(pathname) {
 }
 
 export function makeStreamUrl() {
+  const config = getConfig()
+
+  if (!config.streamAuthToken) {
+    throw new Error('STREAM_AUTH_TOKEN is required for streamed coach calls')
+  }
+
   const streamUrl = new URL(makePublicUrl('/api/call-stream'))
   streamUrl.protocol = streamUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+  streamUrl.searchParams.set('token', config.streamAuthToken)
 
   return streamUrl.toString()
 }

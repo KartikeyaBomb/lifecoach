@@ -2,14 +2,13 @@ import http from 'node:http'
 import { WebSocketServer } from 'ws'
 import {
   createCoachTwiMl,
-  createStreamedCoachCall,
   createTestCall,
   getConfig,
   validateConfig,
 } from './lifecoach.js'
 import { readMemoryStore } from './memory-store.js'
 import { bridgeTwilioToOpenAi } from './realtime-bridge.js'
-import { startDailyScheduler } from './scheduler.js'
+import { startDailyScheduler, triggerDailyCoachCall } from './scheduler.js'
 
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
@@ -19,6 +18,24 @@ function sendJson(response, statusCode, payload) {
     'Content-Type': 'application/json',
   })
   response.end(JSON.stringify(payload, null, 2))
+}
+
+function isAuthorized(request) {
+  const token = getConfig().adminToken
+
+  if (!token) return false
+
+  const authHeader = request.headers.authorization || ''
+  const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
+
+  return bearerToken === token
+}
+
+function requireAuthorization(request, response) {
+  if (isAuthorized(request)) return true
+
+  sendJson(response, 401, { ok: false, error: 'Unauthorized' })
+  return false
 }
 
 function sendXml(response, statusCode, payload) {
@@ -70,7 +87,9 @@ async function handleRequest(request, response) {
   }
 
   if (request.method === 'GET' && url.pathname === '/api/memory') {
-    const store = readMemoryStore()
+    if (!requireAuthorization(request, response)) return
+
+    const store = await readMemoryStore()
     const latestCall = store.calls.at(-1)
 
     sendJson(response, 200, {
@@ -91,6 +110,8 @@ async function handleRequest(request, response) {
   }
 
   if (request.method === 'POST' && url.pathname === '/api/test-call') {
+    if (!requireAuthorization(request, response)) return
+
     try {
       const call = await createTestCall()
       sendJson(response, 200, { ok: true, call })
@@ -104,9 +125,11 @@ async function handleRequest(request, response) {
   }
 
   if (request.method === 'POST' && url.pathname === '/api/coach-call') {
+    if (!requireAuthorization(request, response)) return
+
     try {
-      const call = await createStreamedCoachCall()
-      sendJson(response, 200, { ok: true, call })
+      const result = await triggerDailyCoachCall({ source: 'manual' })
+      sendJson(response, result.ok ? 200 : 409, result)
     } catch (error) {
       sendJson(response, 500, {
         ok: false,
@@ -117,6 +140,8 @@ async function handleRequest(request, response) {
   }
 
   if (request.method === 'POST' && url.pathname === '/api/twiml/coach') {
+    if (!requireAuthorization(request, response)) return
+
     try {
       sendXml(response, 200, createCoachTwiMl())
     } catch (error) {
@@ -160,6 +185,15 @@ server.on('upgrade', (request, socket, head) => {
 
   if (url.pathname !== '/api/call-stream') {
     console.log(`Rejected websocket path: ${url.pathname}`)
+    socket.destroy()
+    return
+  }
+
+  const expectedToken = getConfig().streamAuthToken
+  const actualToken = url.searchParams.get('token')
+
+  if (!expectedToken || actualToken !== expectedToken) {
+    console.log('Rejected websocket with invalid stream token')
     socket.destroy()
     return
   }

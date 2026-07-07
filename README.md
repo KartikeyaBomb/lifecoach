@@ -77,12 +77,51 @@ The scheduler only runs while the API server is running:
 npm run dev:api
 ```
 
-For production, move this into a deployed worker or managed cron job so the call
-still happens when your laptop is closed.
+On Railway, the service must run the API process:
+
+```bash
+npm start
+```
+
+Set `PUBLIC_BASE_URL` to the Railway public HTTPS URL for this service. The
+scheduler starts only when required env vars are present and `PUBLIC_BASE_URL`
+is set. If you change `DAILY_CALL_TIME`, Railway restarts the service; the app
+will still place the call if it comes up within 10 minutes after the scheduled
+time, and logs the next scheduled call on startup.
+
+You can manually trigger today's scheduled coach call with:
+
+```bash
+curl -X POST -H "Authorization: Bearer $LIFECOACH_ADMIN_TOKEN" https://your-railway-url.up.railway.app/api/coach-call
+```
+
+This endpoint is limited to one successful trigger per `APP_TIMEZONE` day. On
+Railway, set `DATABASE_URL` so that daily limit survives deploys and restarts.
+
+For more durable production scheduling, move the trigger into a deployed worker
+or managed cron job so the call is not tied to a single web process timer.
 
 Twilio is pay-as-you-go for voice calls. OpenAI Realtime is billed by model/audio
 usage. Trial credits may help while testing, but production phone calls are not
 free forever.
+
+## Security
+
+Endpoints that can spend money or expose private memory require:
+
+```bash
+Authorization: Bearer $LIFECOACH_ADMIN_TOKEN
+```
+
+Protected endpoints:
+
+- `POST /api/test-call`
+- `POST /api/coach-call`
+- `POST /api/twiml/coach`
+- `GET /api/memory`
+
+The Twilio media WebSocket also requires `STREAM_AUTH_TOKEN` in the generated
+stream URL. Set both tokens in Railway variables and keep them private.
 
 ## Local Development
 
@@ -139,7 +178,8 @@ OpenAI Realtime and sending the coach's audio back into the call.
 
 ## Memory
 
-Completed AI calls are saved locally to:
+Completed AI calls are saved to Postgres when `DATABASE_URL` is present. If
+`DATABASE_URL` is missing, the app falls back to local JSON:
 
 ```bash
 data/lifecoach-memory.json
@@ -148,8 +188,17 @@ data/lifecoach-memory.json
 The `data/` directory is ignored by git because it may contain private
 transcripts and coaching memory.
 
+On Railway, add a Postgres service to the project, then add the Postgres
+connection string to the LifeCoach service as:
+
+```bash
+DATABASE_URL=postgresql://...
+```
+
+The app creates its own `calls` and `memories` tables on first use.
+
 Check memory status:
 
 ```bash
-curl http://localhost:8787/api/memory
+curl -H "Authorization: Bearer $LIFECOACH_ADMIN_TOKEN" http://localhost:8787/api/memory
 ```
