@@ -2,6 +2,7 @@ import WebSocket from 'ws'
 import { getConfig } from './lifecoach.js'
 import { formatMemoryForPrompt, saveCompletedCall } from './memory-store.js'
 
+// Builds the OpenAI Realtime websocket URL for the configured model.
 const realtimeUrl = (model) =>
   `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`
 
@@ -27,12 +28,14 @@ agrees and you also believe the goals are clear enough. For now, keep the call
 focused and short enough to test the system.
 `.trim()
 
+// Sends a JSON websocket event only while the socket is open.
 function sendJson(socket, payload) {
   if (socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(payload))
   }
 }
 
+// Bridges one Twilio phone-call media stream to one OpenAI Realtime session.
 export function bridgeTwilioToOpenAi(twilioSocket) {
   const config = getConfig()
   const startedAt = new Date().toISOString()
@@ -50,6 +53,7 @@ export function bridgeTwilioToOpenAi(twilioSocket) {
   let saved = false
   const queuedAudio = []
 
+  // Sends any caller audio that arrived before OpenAI finished connecting.
   function flushQueuedAudio() {
     while (openAiReady && queuedAudio.length) {
       sendJson(openAiSocket, {
@@ -59,6 +63,7 @@ export function bridgeTwilioToOpenAi(twilioSocket) {
     }
   }
 
+  // Saves the transcript and memory once, even if multiple close events fire.
   async function saveCallMemory() {
     if (saved) return
     saved = true
@@ -76,6 +81,7 @@ export function bridgeTwilioToOpenAi(twilioSocket) {
     )
   }
 
+  // Configures the OpenAI Realtime session once the websocket is connected.
   openAiSocket.on('open', () => {
     console.log('OpenAI Realtime connected')
     openAiReady = true
@@ -121,6 +127,7 @@ export function bridgeTwilioToOpenAi(twilioSocket) {
       })
   })
 
+  // Handles OpenAI session, audio, transcript, interruption, and error events.
   openAiSocket.on('message', (data) => {
     const event = JSON.parse(data.toString())
 
@@ -182,16 +189,19 @@ export function bridgeTwilioToOpenAi(twilioSocket) {
     }
   })
 
+  // Closes the Twilio side if the OpenAI websocket errors.
   openAiSocket.on('error', (error) => {
     console.log(`OpenAI Realtime socket error: ${error.message}`)
     twilioSocket.close()
   })
 
+  // Mirrors OpenAI closure to Twilio so both sides end together.
   openAiSocket.on('close', () => {
     console.log('OpenAI Realtime closed')
     twilioSocket.close()
   })
 
+  // Receives Twilio call lifecycle and audio events, forwarding audio to OpenAI.
   twilioSocket.on('message', (data) => {
     const message = JSON.parse(data.toString())
 
@@ -226,6 +236,7 @@ export function bridgeTwilioToOpenAi(twilioSocket) {
     }
   })
 
+  // Saves memory and closes OpenAI when Twilio disconnects first.
   twilioSocket.on('close', () => {
     console.log(`Twilio media stream closed: ${streamSid}`)
     saveCallMemory().catch((error) => {

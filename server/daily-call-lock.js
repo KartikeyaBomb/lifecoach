@@ -9,10 +9,12 @@ const lockPath = path.resolve(process.cwd(), 'data', 'daily-call-locks.json')
 let pool = null
 let schemaReady = false
 
+// Chooses Postgres for durable Railway locks when DATABASE_URL is configured.
 function usingPostgres() {
   return Boolean(process.env.DATABASE_URL)
 }
 
+// Reuses one Postgres pool for daily call lock operations.
 function getPool() {
   if (!pool) {
     pool = new Pool({
@@ -24,6 +26,7 @@ function getPool() {
   return pool
 }
 
+// Creates the daily call lock table on first use.
 async function ensureSchema() {
   if (!usingPostgres() || schemaReady) return
 
@@ -39,6 +42,7 @@ async function ensureSchema() {
   schemaReady = true
 }
 
+// Reserves today's call slot before Twilio starts dialing.
 export async function reserveDailyCall({ dateKey, source }) {
   if (usingPostgres()) {
     await ensureSchema()
@@ -77,6 +81,7 @@ export async function reserveDailyCall({ dateKey, source }) {
   return { reserved: true, lock: locks[dateKey] }
 }
 
+// Records the Twilio call SID after a reserved daily call starts.
 export async function completeDailyCallReservation({ dateKey, callSid }) {
   if (usingPostgres()) {
     await ensureSchema()
@@ -95,6 +100,7 @@ export async function completeDailyCallReservation({ dateKey, callSid }) {
   }
 }
 
+// Removes an unused reservation when call creation fails before dialing.
 export async function releaseDailyCallReservation(dateKey) {
   if (usingPostgres()) {
     await ensureSchema()
@@ -112,6 +118,7 @@ export async function releaseDailyCallReservation(dateKey) {
   }
 }
 
+// Reads the existing reservation for a local app date.
 async function getDailyCallLock(dateKey) {
   if (usingPostgres()) {
     const result = await getPool().query(
@@ -125,6 +132,7 @@ async function getDailyCallLock(dateKey) {
   return readLocalLocks()[dateKey] || null
 }
 
+// Converts database column names into the API-facing lock shape.
 function normalizeLock(row) {
   return {
     dateKey: row.date_key,
@@ -134,6 +142,7 @@ function normalizeLock(row) {
   }
 }
 
+// Reads daily call locks from the local JSON fallback file.
 function readLocalLocks() {
   try {
     if (!fs.existsSync(lockPath)) return {}
@@ -144,6 +153,7 @@ function readLocalLocks() {
   }
 }
 
+// Writes daily call locks to the local JSON fallback file.
 function writeLocalLocks(locks) {
   fs.mkdirSync(path.dirname(lockPath), { recursive: true })
   fs.writeFileSync(lockPath, `${JSON.stringify(locks, null, 2)}\n`)

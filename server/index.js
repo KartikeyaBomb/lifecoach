@@ -10,6 +10,7 @@ import { readMemoryStore } from './memory-store.js'
 import { bridgeTwilioToOpenAi } from './realtime-bridge.js'
 import { startDailyScheduler, triggerDailyCoachCall } from './scheduler.js'
 
+// Sends a JSON API response with shared CORS headers.
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
     'Access-Control-Allow-Headers': 'Content-Type',
@@ -20,6 +21,7 @@ function sendJson(response, statusCode, payload) {
   response.end(JSON.stringify(payload, null, 2))
 }
 
+// Checks whether the request has the admin bearer token.
 function isAuthorized(request) {
   const token = getConfig().adminToken
 
@@ -31,6 +33,7 @@ function isAuthorized(request) {
   return bearerToken === token
 }
 
+// Blocks protected routes unless the admin token is present and valid.
 function requireAuthorization(request, response) {
   if (isAuthorized(request)) return true
 
@@ -38,6 +41,7 @@ function requireAuthorization(request, response) {
   return false
 }
 
+// Sends XML responses, mainly TwiML for Twilio voice calls.
 function sendXml(response, statusCode, payload) {
   response.writeHead(statusCode, {
     'Content-Type': 'text/xml',
@@ -45,6 +49,7 @@ function sendXml(response, statusCode, payload) {
   response.end(payload)
 }
 
+// Reads the full request body into a string for webhook logging.
 function readBody(request) {
   return new Promise((resolve, reject) => {
     let body = ''
@@ -58,6 +63,7 @@ function readBody(request) {
   })
 }
 
+// Routes every HTTP request to the matching LifeCoach API endpoint.
 async function handleRequest(request, response) {
   const url = new URL(request.url, `http://${request.headers.host}`)
   console.log(`${request.method} ${url.pathname}`)
@@ -166,6 +172,7 @@ async function handleRequest(request, response) {
 const config = getConfig()
 const validation = validateConfig(config)
 
+// Creates the HTTP server and converts thrown route errors into JSON responses.
 const server = http.createServer((request, response) => {
   handleRequest(request, response).catch((error) => {
     sendJson(response, 500, {
@@ -177,8 +184,10 @@ const server = http.createServer((request, response) => {
 
 const streams = new WebSocketServer({ noServer: true })
 
+// Hands accepted Twilio media websocket connections to the OpenAI bridge.
 streams.on('connection', (socket) => bridgeTwilioToOpenAi(socket))
 
+// Upgrades valid Twilio media stream requests from HTTP to WebSocket.
 server.on('upgrade', (request, socket, head) => {
   const url = new URL(request.url, `http://${request.headers.host}`)
   console.log(`UPGRADE ${url.pathname}`)
@@ -204,6 +213,7 @@ server.on('upgrade', (request, socket, head) => {
   })
 })
 
+// Starts the API server and activates the daily scheduler when config is ready.
 server.listen(config.port, () => {
   console.log(`LifeCoach API listening on http://localhost:${config.port}`)
 

@@ -13,6 +13,7 @@ const requiredEnv = [
   'STREAM_AUTH_TOKEN',
 ]
 
+// Loads local env vars for development without overwriting real process env.
 export function loadEnv(file = '.env.local') {
   const envPath = path.resolve(process.cwd(), file)
 
@@ -30,7 +31,7 @@ export function loadEnv(file = '.env.local') {
     if (separator === -1) continue
 
     const key = trimmed.slice(0, separator).trim()
-    const value = trimmed.slice(separator + 1).trim()
+    const value = cleanEnvValue(trimmed.slice(separator + 1))
 
     if (!process.env[key]) {
       process.env[key] = value
@@ -38,29 +39,33 @@ export function loadEnv(file = '.env.local') {
   }
 }
 
+// Collects all runtime configuration used by calls, scheduling, and the API.
 export function getConfig() {
   loadEnv()
 
+  const maxCallMinutes = Number(readEnv('MAX_CALL_MINUTES') || 5)
+
   return {
-    openAiApiKey: process.env.OPENAI_API_KEY,
-    twilioAccountSid: process.env.TWILIO_ACCOUNT_SID,
-    twilioAuthToken: process.env.TWILIO_AUTH_TOKEN,
-    twilioPhoneNumber: process.env.TWILIO_PHONE_NUMBER,
-    userPhoneNumber: process.env.USER_PHONE_NUMBER,
-    publicBaseUrl: process.env.PUBLIC_BASE_URL,
-    adminToken: process.env.LIFECOACH_ADMIN_TOKEN,
-    streamAuthToken: process.env.STREAM_AUTH_TOKEN,
-    realtimeModel: process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-2',
-    realtimeVoice: process.env.OPENAI_REALTIME_VOICE || 'marin',
-    appTimezone: process.env.APP_TIMEZONE || 'America/Chicago',
-    dailyCallTime: process.env.DAILY_CALL_TIME || '20:30',
-    maxCallMs: Number(process.env.MAX_CALL_MINUTES || 5) * 60 * 1000,
-    port: Number(process.env.PORT || 8787),
+    openAiApiKey: readEnv('OPENAI_API_KEY'),
+    twilioAccountSid: readEnv('TWILIO_ACCOUNT_SID'),
+    twilioAuthToken: readEnv('TWILIO_AUTH_TOKEN'),
+    twilioPhoneNumber: readEnv('TWILIO_PHONE_NUMBER'),
+    userPhoneNumber: readEnv('USER_PHONE_NUMBER'),
+    publicBaseUrl: normalizePublicBaseUrl(readEnv('PUBLIC_BASE_URL')),
+    adminToken: readEnv('LIFECOACH_ADMIN_TOKEN'),
+    streamAuthToken: readEnv('STREAM_AUTH_TOKEN'),
+    realtimeModel: readEnv('OPENAI_REALTIME_MODEL') || 'gpt-realtime-2',
+    realtimeVoice: readEnv('OPENAI_REALTIME_VOICE') || 'marin',
+    appTimezone: readEnv('APP_TIMEZONE') || 'America/Chicago',
+    dailyCallTime: readEnv('DAILY_CALL_TIME') || '20:30',
+    maxCallMs: maxCallMinutes * 60 * 1000,
+    port: Number(readEnv('PORT') || 8787),
   }
 }
 
+// Reports whether all required secrets and phone settings are present.
 export function validateConfig(config = getConfig()) {
-  const missing = requiredEnv.filter((key) => !process.env[key])
+  const missing = requiredEnv.filter((key) => !readEnv(key))
 
   return {
     ok: missing.length === 0,
@@ -83,10 +88,39 @@ export function validateConfig(config = getConfig()) {
   }
 }
 
+function readEnv(key) {
+  return cleanEnvValue(process.env[key] || '')
+}
+
+function cleanEnvValue(value) {
+  const trimmed = value.trim()
+
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim()
+  }
+
+  return trimmed
+}
+
+function normalizePublicBaseUrl(value) {
+  if (!value) return ''
+
+  if (/^https?:\/\//i.test(value)) {
+    return value
+  }
+
+  return `https://${value}`
+}
+
+// Creates an authenticated Twilio client from the current config.
 export function makeTwilioClient(config = getConfig()) {
   return twilio(config.twilioAccountSid, config.twilioAuthToken)
 }
 
+// Starts a simple non-streaming Twilio call to prove outbound calling works.
 export async function createTestCall() {
   const config = getConfig()
   const validation = validateConfig(config)
@@ -120,6 +154,7 @@ export async function createTestCall() {
   }
 }
 
+// Builds an absolute public URL that Twilio can call back into.
 export function makePublicUrl(pathname) {
   const config = getConfig()
 
@@ -130,6 +165,7 @@ export function makePublicUrl(pathname) {
   return new URL(pathname, config.publicBaseUrl).toString()
 }
 
+// Builds the authenticated websocket URL for Twilio Media Streams.
 export function makeStreamUrl() {
   const config = getConfig()
 
@@ -144,6 +180,7 @@ export function makeStreamUrl() {
   return streamUrl.toString()
 }
 
+// Generates the TwiML that tells Twilio to connect the call audio to this server.
 export function createCoachTwiMl() {
   const response = new twilio.twiml.VoiceResponse()
 
@@ -160,6 +197,7 @@ export function createCoachTwiMl() {
   return response.toString()
 }
 
+// Starts the real AI coach call and connects it to the Twilio media stream.
 export async function createStreamedCoachCall() {
   const config = getConfig()
   const validation = validateConfig(config)
@@ -190,6 +228,7 @@ export async function createStreamedCoachCall() {
   }
 }
 
+// Forces an active Twilio call to end after the configured max call length.
 export async function endCall(callSid) {
   const client = makeTwilioClient()
   const call = await client.calls(callSid).update({ status: 'completed' })

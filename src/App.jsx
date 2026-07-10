@@ -12,6 +12,7 @@ const starterState = {
   updatedAt: null,
 }
 
+// Loads the saved MVP setup state from the browser, falling back to a clean setup.
 function loadState() {
   try {
     const saved = localStorage.getItem(storageKey)
@@ -21,6 +22,7 @@ function loadState() {
   }
 }
 
+// Formats ISO timestamps for the compact status panel.
 function formatDate(value) {
   if (!value) return 'Not started'
   return new Intl.DateTimeFormat('en', {
@@ -31,6 +33,7 @@ function formatDate(value) {
   }).format(new Date(value))
 }
 
+// Renders the LifeCoach setup/status experience and owns local MVP state.
 function App() {
   const [state, setState] = useState(loadState)
   const [draft, setDraft] = useState({
@@ -66,6 +69,7 @@ function App() {
     }
   }, [state.phase])
 
+  // Moves the local UI from setup into goal discovery after the user submits intake.
   function startDiscovery(event) {
     event.preventDefault()
 
@@ -143,6 +147,7 @@ function App() {
   )
 }
 
+// Renders the finalized goal groups that appear in Phase 2.
 function FinalGoals({ goals }) {
   return (
     <div className="final-goals">
@@ -154,6 +159,7 @@ function FinalGoals({ goals }) {
   )
 }
 
+// Renders one finalized goal section when it has items.
 function GoalGroup({ title, items = [] }) {
   if (!items.length) return null
 

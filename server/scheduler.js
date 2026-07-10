@@ -12,6 +12,7 @@ let schedulerTimer = null
 let lastScheduledDate = null
 let schedulerInFlight = false
 
+// Starts the in-process daily scheduler for the configured local call time.
 export function startDailyScheduler() {
   if (schedulerTimer) return
 
@@ -34,6 +35,7 @@ export function startDailyScheduler() {
   })
 }
 
+// Stops the in-process scheduler, mainly useful for tests or future shutdown hooks.
 export function stopDailyScheduler() {
   if (!schedulerTimer) return
 
@@ -41,6 +43,7 @@ export function stopDailyScheduler() {
   schedulerTimer = null
 }
 
+// Checks whether the current time is inside today's scheduled call window.
 export async function runSchedulerTick(now = new Date()) {
   if (schedulerInFlight) return
 
@@ -57,6 +60,7 @@ export async function runSchedulerTick(now = new Date()) {
   await triggerDailyCoachCall({ now, source: 'scheduled' })
 }
 
+// Starts today's coach call if the daily lock has not already been used.
 export async function triggerDailyCoachCall({ now = new Date(), source = 'manual' } = {}) {
   if (schedulerInFlight) {
     return {
@@ -124,6 +128,7 @@ export async function triggerDailyCoachCall({ now = new Date(), source = 'manual
   }
 }
 
+// Parses HH:mm schedule strings and rejects invalid times.
 function parseTime(value) {
   const [hour, minute] = value.split(':').map(Number)
 
@@ -141,6 +146,7 @@ function parseTime(value) {
   return { hour, minute }
 }
 
+// Converts today's configured app-local call time into an absolute Date.
 function getScheduledDate(now, timeZone, scheduled) {
   const current = getPartsInTimezone(now, timeZone)
   const offsetMs = getTimezoneOffsetMs(now, timeZone)
@@ -156,6 +162,7 @@ function getScheduledDate(now, timeZone, scheduled) {
   )
 }
 
+// Computes the timezone offset needed to translate local app time to UTC.
 function getTimezoneOffsetMs(date, timeZone) {
   const parts = getPartsInTimezone(date, timeZone)
   const asUtc = Date.UTC(
@@ -170,6 +177,7 @@ function getTimezoneOffsetMs(date, timeZone) {
   return asUtc - Math.floor(date.getTime() / 1000) * 1000
 }
 
+// Formats the next scheduled call time for Railway/local logs.
 function formatScheduleForLog(now, config, dayOffset = 0) {
   const scheduled = parseTime(config.dailyCallTime)
   const scheduledAt = getScheduledDate(now, config.appTimezone, scheduled)
@@ -187,10 +195,12 @@ function formatScheduleForLog(now, config, dayOffset = 0) {
   }).format(scheduledAt)
 }
 
+// Capitalizes a short source label for log messages.
 function capitalize(value) {
   return `${value.charAt(0).toUpperCase()}${value.slice(1)}`
 }
 
+// Extracts date and time parts as they appear in the configured app timezone.
 function getPartsInTimezone(date, timeZone) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone,

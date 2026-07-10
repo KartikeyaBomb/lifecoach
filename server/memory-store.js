@@ -17,21 +17,37 @@ const emptyStore = {
 let pool = null
 let schemaReady = false
 
+// Chooses Postgres persistence when Railway provides a DATABASE_URL.
 function usingPostgres() {
-  return Boolean(process.env.DATABASE_URL)
+  return Boolean(readEnv('DATABASE_URL'))
 }
 
+// Reuses a single Postgres pool for all memory reads and writes.
 function getPool() {
   if (!pool) {
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false },
+      connectionString: readEnv('DATABASE_URL'),
+      ssl: readEnv('DATABASE_SSL') === 'false' ? false : { rejectUnauthorized: false },
     })
   }
 
   return pool
 }
 
+function readEnv(key) {
+  const trimmed = (process.env[key] || '').trim()
+
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim()
+  }
+
+  return trimmed
+}
+
+// Creates the call and memory tables on first use.
 async function ensureSchema() {
   if (!usingPostgres() || schemaReady) return
 
@@ -58,10 +74,12 @@ async function ensureSchema() {
   schemaReady = true
 }
 
+// Ensures the local fallback data directory exists before writing JSON.
 function ensureStoreDir() {
   fs.mkdirSync(path.dirname(storePath), { recursive: true })
 }
 
+// Reads recent calls and memories from Postgres or local JSON.
 export async function readMemoryStore() {
   if (usingPostgres()) {
     await ensureSchema()
@@ -113,11 +131,13 @@ export async function readMemoryStore() {
   }
 }
 
+// Writes the full local JSON memory store for development fallback mode.
 export function writeMemoryStore(store) {
   ensureStoreDir()
   fs.writeFileSync(storePath, `${JSON.stringify(store, null, 2)}\n`)
 }
 
+// Formats saved memory as prompt text for the next realtime coaching call.
 export async function formatMemoryForPrompt() {
   const store = await readMemoryStore()
   const recentMemories = store.memories.slice(-12)
@@ -129,6 +149,7 @@ export async function formatMemoryForPrompt() {
   return recentMemories.map((memory) => `- ${memory.text}`).join('\n')
 }
 
+// Saves a completed call transcript and distilled memory items.
 export async function saveCompletedCall({ callSid, streamSid, startedAt, endedAt, turns }) {
   const cleanTurns = turns.filter((turn) => turn.text?.trim())
   const summary = summarizeTurns(cleanTurns)
@@ -217,10 +238,12 @@ export async function saveCompletedCall({ callSid, streamSid, startedAt, endedAt
   }
 }
 
+// Returns a fresh copy of the empty memory store template.
 function cloneEmptyStore() {
   return JSON.parse(JSON.stringify(emptyStore))
 }
 
+// Distills raw call transcript turns into a short summary and reusable memory.
 function summarizeTurns(turns) {
   const userTurns = turns.filter((turn) => turn.role === 'user')
   const coachTurns = turns.filter((turn) => turn.role === 'coach')
